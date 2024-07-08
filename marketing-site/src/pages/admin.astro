@@ -1,0 +1,19 @@
+---
+import ViewRecordingForm from "@components/viewrecordingform.astro";
+import SessionRecordings from "@components/SessionRecordings.vue";
+import Container from "@components/container.astro";
+import Sectionhead from "@components/sectionhead.astro";
+import Layout from "@layouts/Layout.astro";
+import { Icon } from "astro-icon/components";
+---
+
+<Layout title="Admin">
+  <Container>
+    <Sectionhead>
+      <Fragment slot="title">Admin</Fragment>
+      <Fragment slot="desc">View recordings</Fragment>
+    </Sectionhead>
+
+    <SessionRecordings client:load />
+  </Container>
+</Layout>
