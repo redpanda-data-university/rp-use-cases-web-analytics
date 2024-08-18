@@ -3,11 +3,9 @@ import { cors } from 'hono/cors'
 
 import { UAParser, IResult } from 'ua-parser-js'
 
-import { createClient } from '@clickhouse/client-web' // or '@clickhouse/client-web'
+import { createClient } from '@clickhouse/client-web'
 
-const client = createClient({
-  /* configuration */
-})
+const client = createClient({/* optional configuration */})
 
 const app = new Hono()
 app.use('/*', cors())
