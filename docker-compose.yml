@@ -81,6 +81,7 @@ services:
   hono:
     image: node:20
     container_name: hono
+    hostname: hono
     ports:
       - "8787:8787"
     volumes:
@@ -92,6 +93,7 @@ services:
   marketing-site:
     image: node:20
     container_name: marketing-site
+    hostname: marketing-site
     ports:
       - "4321:4321"
     volumes:
