@@ -71,6 +71,8 @@ services:
 
   grafana:
     image: grafana/grafana
+    container_name: grafana
+    hostname: grafana
     # volumes:
     #   - ./grafana/config:/etc/grafana-config
     #   - ./grafana/datasources:/etc/grafana/provisioning/datasources
