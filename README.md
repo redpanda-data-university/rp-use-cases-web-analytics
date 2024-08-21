@@ -2,7 +2,7 @@
 [Redpanda University][rpu] is a series of courses that will teach you the basics of event streaming, and will help you gain hands-on experience with a new data streaming platform called [Redpanda][rp].
 
 ## RP Use Cases: Web Analytics
-This repository contains code examples for the Web Analytics course from [Redpanda University][rpu].
+This repository contains code examples for the Web Analytics course from [Redpanda University][rpu]. This particular branch is used in the corresponding Instruqt course.
 
 <img src="/gifs/home.gif" width="500">
 
