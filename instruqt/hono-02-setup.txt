@@ -2,47 +2,34 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 
 const app = new Hono()
-app.use('/*', cors())
+app.use('*', cors())
 
-function getBaseUrl(c) {
-  const requestUrl = new URL(c.req.url);
-  const port = requestUrl.port ? `:${requestUrl.port}` : '';
-  return `https://${requestUrl.hostname}${port}`;
-}
-
-app.get('/pixel', (c) => {
-  const path = c.req.query('path')
-  console.log(`Saw vistor at: ${path}`)
-  // 1x1 transparent GIF in binary format as a Uint8Array
-  const pixelArray = new Uint8Array([
-    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00, 0x01, 0x00, 0x80, 0xff,
-    0x00, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x21, 0xf9, 0x04, 0x01, 0x00,
-    0x00, 0x00, 0x00, 0x2c, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
-    0x00, 0x02, 0x02, 0x44, 0x01, 0x00, 0x3b
-  ]);
-  c.header('Content-Type', 'image/gif');
-  c.header('Content-Length', pixelArray.length.toString());
-  return c.body(pixelArray);
-});
-
-
-// updated /js endpoint, which POSTs the the visitor’s web page visit
-// to a new endpoint in our tracking service (/track)
 app.get('/js', async (c) => {
-  const baseUrl = getBaseUrl(c)
-  const pixelUrl = `${baseUrl}/pixel`
+  const baseUrl = new URL(c.req.url).hostname
   c.header('Content-Type', 'application/javascript');
+
   return c.text(`
-      document.addEventListener('DOMContentLoaded', function () {
-          var path = new URL(window.location.href).pathname
-          var img = document.createElement('img');
-          img.src = \`${pixelUrl}?path=\${path}\`;
-          img.width = 1;
-          img.height = 1;
-          img.style.display = 'none';
-          document.body.appendChild(img)
-      });
+    const payload = {
+      url: window.location.href,
+      path: new URL(window.location.href).pathname
+    }
+    fetch("https://${baseUrl}/track", {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then((response) => {
+      // success handler
+    });
   `)
 });
+
+app.post('/track', async (c) => {
+// parse the payload that contains the page URL
+  const { path, url } = await c.req.json()
+
+  console.log(`Saw vistor at: ${path}`)
+  return c.json({ success: true })
+})
 
 export default app
