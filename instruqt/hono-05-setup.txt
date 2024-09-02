@@ -1,0 +1,87 @@
+import { Hono } from 'hono'
+import { cors } from 'hono/cors'
+
+// add this line
+import { UAParser, IResult } from 'ua-parser-js'
+
+const app = new Hono()
+app.use('*', cors())
+
+app.get('/js', async (c) => {
+  const baseUrl = new URL(c.req.url).hostname
+  c.header('Content-Type', 'application/javascript');
+
+  return c.text(`
+    const payload = {
+      url: window.location.href,
+      path: new URL(window.location.href).pathname
+    }
+    fetch("https://${baseUrl}/track", {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then((response) => {
+      // success handler
+    });
+  `)
+});
+
+function flattenObject(obj: IResult, parentKey: string = '', result: Record<string, any> = {}): Record<string, any> {
+  Object.entries(obj).forEach(([key, value]) => {
+      const newKey = parentKey ? `${parentKey}_${key}` : key;
+      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+          flattenObject(value as IResult, newKey, result);
+      } else {
+          result[newKey] = value;
+      }
+  });
+  return result;
+}
+
+app.post('/track', async (c) => {
+  // parse the payload that contains the page URL
+  const { path, url } = await c.req.json()
+
+  // parse the user agent
+  const userAgent = c.req.header('user-agent')
+
+  const parser = new UAParser(userAgent);
+  const client: Record<string, any> = flattenObject(parser.getResult() as IResult);
+
+  // add the client's IP address and country of origin
+  // note: you may need to adjust this for different runtimes (Deno, Bun, etc)
+  const ip = c.req.header("CF-Connecting-IP") || '127.0.0.1'
+  const country = c.req.raw?.cf?.country
+
+  // throw a timestamp in there too
+  const timestamp = Math.floor(new Date().getTime() / 1000)
+
+  // combine with the IP address, country
+  const data = { url, ip, country, ...client, timestamp }
+  console.log(data)
+
+  // save to Redpanda
+  console.log("Publishing to Redpanda")
+  const body = JSON.stringify({
+    "records": [
+      {
+        "value": data,
+        "partition": 0
+      }
+    ]
+  })
+  const redpandaUrl = 'http://redpanda-1:8082/topics/website_visits';
+
+  await fetch(redpandaUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": 'application/vnd.kafka.json.v2+json'
+    },
+    body: body,
+  });
+
+  return c.text("Ok")
+});
+
+export default app
