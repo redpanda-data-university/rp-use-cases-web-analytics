@@ -49,7 +49,8 @@ export default {
     try {
       const response = await fetch("ADD_YOUR_SANDBOX_URL/recordings", {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -71,7 +72,8 @@ export default {
       }
       const response = await fetch(`ADD_YOUR_SANDBOX_URL/recordings/${id}`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
       });
 
       const results = await response.json()
