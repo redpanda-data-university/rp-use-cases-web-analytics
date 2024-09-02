@@ -47,7 +47,7 @@ export default {
   },
   async mounted() {
     try {
-      const response = await fetch("http://localhost:8787/recordings", {
+      const response = await fetch("ADD_YOUR_SANDBOX_URL/recordings", {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
@@ -69,7 +69,7 @@ export default {
         this.player = null;
         document.getElementById('replay').innerHTML = '';
       }
-      const response = await fetch(`http://localhost:8787/recordings/${id}`, {
+      const response = await fetch(`ADD_YOUR_SANDBOX_URL/recordings/${id}`, {
         method: 'GET',
         headers: { 'Content-Type': 'application/json' }
       });
