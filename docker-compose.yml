@@ -1,19 +1,20 @@
-version: '3.7'
+version: "3.7"
 services:
   # Redpanda cluster
   redpanda-1:
-    image: docker.redpanda.com/redpandadata/redpanda:v23.3.7
+    #image: docker.redpanda.com/redpandadata/redpanda:v23.3.7
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.4
     container_name: redpanda-1
     command:
       - redpanda
       - start
       - --smp
-      - '1'
+      - "1"
       - --reserve-memory
       - 0M
       - --overprovisioned
       - --node-id
-      - '1'
+      - "1"
       - --kafka-addr
       - PLAINTEXT://0.0.0.0:29092,OUTSIDE://0.0.0.0:9092
       - --advertise-kafka-addr
@@ -32,9 +33,10 @@ services:
       - 9092:9092
       - 28082:28082
       - 29092:29092
-  
+
   redpanda-console:
-    image: docker.redpanda.com/vectorized/console:v2.1.1
+    #image: docker.redpanda.com/vectorized/console:v2.1.1
+    image: docker.redpanda.com/redpandadata/console:v3.12.0
     container_name: redpanda-console
     entrypoint: /bin/sh
     command: -c "echo \"$$CONSOLE_CONFIG_FILE\" > /tmp/config.yml; /app/console"
@@ -43,9 +45,9 @@ services:
       CONSOLE_CONFIG_FILE: |
         kafka:
           brokers: ["redpanda-1:29092"]
-          schemaRegistry:
-            enabled: true
-            urls: ["http://redpanda-1:8081"]
+        schemaRegistry:
+          enabled: true
+          urls: ["http://redpanda-1:8081"]
         redpanda:
           adminApi:
             enabled: true
@@ -60,9 +62,9 @@ services:
     user: "101:101"
     container_name: clickhouse
     hostname: clickhouse
-    volumes:
-      - ${PWD}/fs/volumes/clickhouse/etc/clickhouse-server/config.d/config.xml:/etc/clickhouse-server/config.d/config.xml
-      - ${PWD}/fs/volumes/clickhouse/etc/clickhouse-server/users.d/users.xml:/etc/clickhouse-server/users.d/users.xml
+    environment:
+      # local dev only: passwordless `default` user reachable over the network
+      CLICKHOUSE_SKIP_USER_SETUP: "1"
     ports:
       - "8123:8123"
       - "9000:9000"
@@ -103,3 +105,4 @@ services:
     working_dir: /app
     command: >
       /bin/sh -c "npm install && npm run dev"
+

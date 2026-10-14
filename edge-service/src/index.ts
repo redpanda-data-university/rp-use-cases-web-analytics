@@ -5,7 +5,7 @@ import { UAParser, IResult } from 'ua-parser-js'
 
 import { createClient } from '@clickhouse/client-web'
 
-const client = createClient({/* optional configuration */})
+const client = createClient({ url: 'http://clickhouse:8123' })
 
 const app = new Hono()
 app.use('/*', cors())
@@ -19,7 +19,7 @@ app.get('/totals', async (c) => {
     FROM analytics.web
     GROUP BY ip
   `;
-  const url = "http://localhost:8123/?query=";
+  const url = "http://clickhouse:8123/?query=";
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -72,7 +72,7 @@ async function produceToRedpanda(data: Record<string, any>, topic: string): Prom
     ]
   })
 
-  const redpandaUrl = `http://localhost:8082/topics/${topic}`;
+  const redpandaUrl = `http://redpanda-1:28082/topics/${topic}`;
 
   await fetch(redpandaUrl, {
     method: "POST",
@@ -90,7 +90,7 @@ app.post('/track', async (c) => {
 
   // parse the user agent
   const userAgent = c.req.header('user-agent')
-  
+
   const parser = new UAParser(userAgent); // you need to pass the user-agent for nodejs
   const client: Record<string, any> = flattenObject(parser.getResult() as IResult);
 
@@ -98,7 +98,7 @@ app.post('/track', async (c) => {
   // note: you may need to adjust this for different runtimes (Deno, Bun, etc)
   const ip = c.req.header("CF-Connecting-IP") || '127.0.0.1'
   const country = c.req.raw?.cf?.country
-  
+
   // throw a timestamp in there too
   const timestamp = Math.floor(new Date().getTime() / 1000)
 
@@ -150,7 +150,7 @@ app.get('/record.js', (c) => {
 // chapter 3
 app.post('/save-recording', async (c) => {
   // parse the incoming request body
-	const recording = await c.req.json()
+  const recording = await c.req.json()
 
   // write to Redpanda in the background
   c.executionCtx.waitUntil(produceToRedpanda(recording, 'session_recordings'))
@@ -162,12 +162,12 @@ app.post('/save-recording', async (c) => {
 
 function flattenObject(obj: IResult, parentKey: string = '', result: Record<string, any> = {}): Record<string, any> {
   Object.entries(obj).forEach(([key, value]) => {
-      const newKey = parentKey ? `${parentKey}_${key}` : key;
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          flattenObject(value as IResult, newKey, result);
-      } else {
-          result[newKey] = value;
-      }
+    const newKey = parentKey ? `${parentKey}_${key}` : key;
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      flattenObject(value as IResult, newKey, result);
+    } else {
+      result[newKey] = value;
+    }
   });
   return result;
 }
@@ -178,7 +178,8 @@ app.get('/recordings', async (c) => {
     SELECT
       id,
       page_title,
-      max(timestamp) as latest_timestamp
+      -- the timestamp column overflows (epoch ms parsed as seconds), so use the rrweb event's own timestamp
+      max(JSONExtractUInt(recording, 'timestamp')) as latest_timestamp
     FROM analytics.recordings
     WHERE page_title != 'Admin'
     GROUP BY id, page_title
@@ -190,7 +191,7 @@ app.get('/recordings', async (c) => {
     format: 'JSONEachRow',
   })
 
-  const dataset = await resultSet.json() 
+  const dataset = await resultSet.json()
   return c.json(dataset)
 });
 
@@ -199,7 +200,8 @@ app.get('/recordings/:id', async (c) => {
     SELECT *
     FROM analytics.recordings
     WHERE id = {id: String}
-    ORDER BY timestamp DESC;
+    -- rrweb needs events in chronological order to replay
+    ORDER BY JSONExtractUInt(recording, 'timestamp') ASC;
   `
   const resultSet = await client.query({
     query: sql,
@@ -211,6 +213,75 @@ app.get('/recordings/:id', async (c) => {
 
   const dataset = await resultSet.json()
   return c.json(dataset)
+});
+
+// session replay page: lists recordings from Clickhouse and plays them with rrweb-player
+app.get('/replay', (c) => {
+  return c.html(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Admin</title>
+  <link rel="stylesheet" href="https://cdn.rrweb.com/rrweb-player/2.1.1/style.css">
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; display: flex; height: 100vh; }
+    #list { width: 360px; overflow-y: auto; border-right: 1px solid #ddd; padding: 16px; box-sizing: border-box; }
+    #list h1 { font-size: 18px; margin-top: 0; }
+    #list a { display: block; padding: 8px; border-radius: 6px; color: inherit; text-decoration: none; }
+    #list a:hover, #list a.active { background: #f0f0f5; }
+    #list small { color: #777; }
+    #replay { flex: 1; display: flex; align-items: center; justify-content: center; }
+  </style>
+</head>
+<body>
+  <div id="list"><h1>Recordings</h1></div>
+  <div id="replay"><p>Select a recording</p></div>
+
+  <script type="module">
+    import rrwebPlayer from 'https://cdn.rrweb.com/rrweb-player/2.1.1/rrweb-player.js';
+
+    const list = document.getElementById('list');
+    const replay = document.getElementById('replay');
+    let player = null;
+
+    async function loadRecording(id) {
+      list.querySelectorAll('a').forEach((a) => a.classList.toggle('active', a.dataset.id === id));
+      history.replaceState(null, '', '?id=' + id);
+
+      const rows = await (await fetch('/recordings/' + id)).json();
+      // each row stores one rrweb event as a JSON string
+      const events = rows.map((row) => JSON.parse(row.recording));
+
+      player?.$destroy();
+      replay.innerHTML = '';
+      if (events.length < 2) {
+        replay.textContent = 'Not enough events to replay this recording';
+        return;
+      }
+      player = new rrwebPlayer({
+        target: replay,
+        props: { events, width: 1024, height: 576, autoPlay: true },
+      });
+    }
+
+    const recordings = await (await fetch('/recordings')).json();
+    for (const r of recordings) {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.dataset.id = r.id;
+      a.append(r.page_title || '(untitled)', document.createElement('br'));
+      const when = document.createElement('small');
+      when.textContent = new Date(Number(r.latest_timestamp)).toLocaleString() + ' · ' + r.id.slice(0, 8);
+      a.append(when);
+      a.onclick = (e) => { e.preventDefault(); loadRecording(r.id); };
+      list.append(a);
+    }
+
+    const id = new URLSearchParams(location.search).get('id');
+    if (id) loadRecording(id);
+  </script>
+</body>
+</html>`)
 });
 
 export default app
